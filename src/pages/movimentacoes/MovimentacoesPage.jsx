@@ -2,75 +2,115 @@ import React, { useState, useEffect } from 'react';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Input from '../../components/common/Input';
-import { ArrowDownRight, ArrowUpRight, Plus, Search, Filter } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, Plus, Search, Filter, X } from 'lucide-react';
 import inventoryService from '../../api/inventory';
+import { getErrorMessage } from '../../utils/errorParser';
 
 export function MovimentacoesPage() {
   const [filterType, setFilterType] = useState('TODOS');
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
 
-  // Formulário de nova movimentação
+  // Produtos disponíveis para o select do modal
+  const [produtos, setProdutos] = useState([]);
+
+  // Formulário de nova movimentação — payload alinhado com a API:
+  // { produto_id (int)*, tipo*, quantidade (int)*, observacao? }
   const [novoTipo, setNovoTipo] = useState('ENTRADA');
-  const [novoProduto, setNovoProduto] = useState('');
+  const [novoProdutoId, setNovoProdutoId] = useState('');
   const [novaQtd, setNovaQtd] = useState(1);
-  const [novoMotivo, setNovoMotivo] = useState('');
+  const [novaObservacao, setNovaObservacao] = useState('');
+  const [formError, setFormError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [movimentacoes, setMovimentacoes] = useState([
-    { id: 1, data: '05/09/2026 14:32', tipo: 'ENTRADA', produto: 'Sensor Fotoelétrico Industrial 24V', quantidade: 50, operador: 'Carlos Lima', motivo: 'Compra de Reposição - NF #8921' },
-    { id: 2, data: '05/09/2026 12:15', tipo: 'SAIDA', produto: 'Cabo Blindado 4 Vias 100m', quantidade: 12, operador: 'Arthur Faleiros', motivo: 'Ordem de Serviço Linha B' },
-    { id: 3, data: '05/09/2026 10:45', tipo: 'SAIDA', produto: 'Controlador Lógico Programável (CLP)', quantidade: 2, operador: 'Mariana Costa', motivo: 'Projeto Novo Painel 03' },
-    { id: 4, data: '04/09/2026 17:00', tipo: 'ENTRADA', produto: 'Fonte Chaveada 24V 10A', quantidade: 30, operador: 'Arthur Faleiros', motivo: 'Recebimento de Fornecedor' },
-    { id: 5, data: '04/09/2026 09:12', tipo: 'SAIDA', produto: 'Relé de Estado Sólido 40A', quantidade: 5, operador: 'Carlos Lima', motivo: 'Manutenção Preventiva' },
+    { id: 1, data: '05/09/2026 14:32', tipo: 'ENTRADA', produto: 'Sensor Fotoelétrico Industrial 24V', quantidade: 50, operador: 'Carlos Lima', observacao: 'Compra de Reposição - NF #8921' },
+    { id: 2, data: '05/09/2026 12:15', tipo: 'SAIDA', produto: 'Cabo Blindado 4 Vias 100m', quantidade: 12, operador: 'Arthur Faleiros', observacao: 'Ordem de Serviço Linha B' },
+    { id: 3, data: '05/09/2026 10:45', tipo: 'SAIDA', produto: 'Controlador Lógico Programável (CLP)', quantidade: 2, operador: 'Mariana Costa', observacao: 'Projeto Novo Painel 03' },
+    { id: 4, data: '04/09/2026 17:00', tipo: 'ENTRADA', produto: 'Fonte Chaveada 24V 10A', quantidade: 30, operador: 'Arthur Faleiros', observacao: 'Recebimento de Fornecedor' },
+    { id: 5, data: '04/09/2026 09:12', tipo: 'SAIDA', produto: 'Relé de Estado Sólido 40A', quantidade: 5, operador: 'Carlos Lima', observacao: 'Manutenção Preventiva' },
   ]);
 
   useEffect(() => {
-    async function loadMovs() {
-      try {
-        const data = await inventoryService.getMovimentacoes();
-        if (data && Array.isArray(data) && data.length > 0) {
-          setMovimentacoes(data);
-        }
-      } catch {
-        // mantém padrão
+    async function loadData() {
+      // Carrega a lista de movimentações
+      const movs = await inventoryService.getMovimentacoes();
+      if (movs && Array.isArray(movs) && movs.length > 0) {
+        setMovimentacoes(movs);
+      }
+
+      // Carrega produtos para o select do modal
+      const prods = await inventoryService.getProdutos();
+      if (prods && Array.isArray(prods)) {
+        setProdutos(prods);
+      } else if (prods && prods.data && Array.isArray(prods.data)) {
+        setProdutos(prods.data);
       }
     }
-    loadMovs();
+    loadData();
   }, []);
+
+  function openModal() {
+    setNovoTipo('ENTRADA');
+    setNovoProdutoId('');
+    setNovaQtd(1);
+    setNovaObservacao('');
+    setFormError('');
+    setShowModal(true);
+  }
 
   const handleCreate = async (e) => {
     e.preventDefault();
-    if (!novoProduto.trim() || novaQtd <= 0) return;
+    setFormError('');
 
-    const nova = {
-      id: Date.now(),
-      data: 'Agora',
+    // Validação — produto_id é obrigatório e deve ser inteiro
+    if (!novoProdutoId) {
+      setFormError('Selecione um produto.');
+      return;
+    }
+    if (!novaQtd || Number(novaQtd) < 1) {
+      setFormError('A quantidade deve ser maior que zero.');
+      return;
+    }
+
+    const payload = {
+      produto_id: Number(novoProdutoId),
       tipo: novoTipo,
-      produto: novoProduto,
       quantidade: Number(novaQtd),
-      operador: 'Você (Operador)',
-      motivo: novoMotivo || 'Movimentação manual avulsa',
+      observacao: novaObservacao.trim() || undefined,
     };
 
-    setMovimentacoes([nova, ...movimentacoes]);
-    setShowModal(false);
-    setNovoProduto('');
-    setNovaQtd(1);
-    setNovoMotivo('');
-
+    setIsSubmitting(true);
     try {
-      await inventoryService.createMovimentacao(nova);
-    } catch {
-      // silencioso se API não estiver rodando
+      const result = await inventoryService.createMovimentacao(payload);
+      // Se a API retornou a movimentação criada, adiciona no topo da lista
+      const novaMovimentacao = result?.movimentacao || {
+        id: Date.now(),
+        data: 'Agora',
+        tipo: novoTipo,
+        produto: produtos.find((p) => p.id === Number(novoProdutoId))?.nome || `Produto #${novoProdutoId}`,
+        quantidade: Number(novaQtd),
+        operador: 'Você',
+        observacao: novaObservacao || '—',
+      };
+      setMovimentacoes((prev) => [novaMovimentacao, ...prev]);
+      setShowModal(false);
+    } catch (err) {
+      setFormError(getErrorMessage(err));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   const filtered = movimentacoes.filter((m) => {
+    const nomeProduto = m.produto || m.produto_nome || '';
+    const obs = m.observacao || m.motivo || '';
+    const operador = m.operador || m.usuario_nome || '';
     const matchesType = filterType === 'TODOS' || m.tipo === filterType;
     const matchesSearch =
-      m.produto.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      m.motivo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      m.operador.toLowerCase().includes(searchTerm.toLowerCase());
+      nomeProduto.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      obs.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      operador.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesType && matchesSearch;
   });
 
@@ -84,11 +124,7 @@ export function MovimentacoesPage() {
           </p>
         </div>
 
-        <Button
-          variant="primary"
-          icon={Plus}
-          onClick={() => setShowModal(true)}
-        >
+        <Button variant="primary" icon={Plus} onClick={openModal}>
           Registrar Operação
         </Button>
       </div>
@@ -97,7 +133,7 @@ export function MovimentacoesPage() {
       <div className="bg-[#0d1428] border border-[#1b2649] rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-3">
         <div className="w-full sm:flex-1">
           <Input
-            placeholder="Buscar por produto, operador ou motivo..."
+            placeholder="Buscar por produto, operador ou observação..."
             icon={Search}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -129,14 +165,14 @@ export function MovimentacoesPage() {
                 <th className="py-3 px-6 font-semibold">Produto</th>
                 <th className="py-3 px-6 font-semibold text-center">Quantidade</th>
                 <th className="py-3 px-6 font-semibold">Responsável</th>
-                <th className="py-3 px-6 font-semibold">Motivo / Documento</th>
+                <th className="py-3 px-6 font-semibold">Observação</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#17223e]">
               {filtered.map((item) => (
                 <tr key={item.id} className="hover:bg-[#121c38]/60 transition-colors">
                   <td className="py-4 px-6 text-xs text-slate-400 font-mono">
-                    {item.data}
+                    {item.data || item.created_at || '—'}
                   </td>
                   <td className="py-4 px-6">
                     <span
@@ -155,19 +191,26 @@ export function MovimentacoesPage() {
                     </span>
                   </td>
                   <td className="py-4 px-6 font-medium text-slate-100">
-                    {item.produto}
+                    {item.produto || item.produto_nome || `#${item.produto_id}`}
                   </td>
                   <td className="py-4 px-6 text-center font-mono font-bold text-white">
                     {item.quantidade} un
                   </td>
                   <td className="py-4 px-6 text-xs text-slate-300">
-                    {item.operador}
+                    {item.operador || item.usuario_nome || '—'}
                   </td>
                   <td className="py-4 px-6 text-xs text-slate-400">
-                    {item.motivo}
+                    {item.observacao || item.motivo || '—'}
                   </td>
                 </tr>
               ))}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-12 text-center text-slate-400">
+                    Nenhuma movimentação encontrada.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
@@ -177,8 +220,24 @@ export function MovimentacoesPage() {
       {showModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#0e162c] border border-[#1e2a4a] rounded-3xl p-6 max-w-md w-full shadow-2xl">
-            <h3 className="text-lg font-bold text-white mb-4">Registrar Movimentação</h3>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-bold text-white">Registrar Movimentação</h3>
+              <button
+                onClick={() => setShowModal(false)}
+                className="text-slate-400 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {formError && (
+              <div className="mb-4 px-4 py-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-sm">
+                {formError}
+              </div>
+            )}
+
             <form onSubmit={handleCreate} className="space-y-4">
+              {/* Tipo */}
               <div>
                 <label className="text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5 block">
                   Tipo de Operação
@@ -209,14 +268,37 @@ export function MovimentacoesPage() {
                 </div>
               </div>
 
-              <Input
-                label="Nome do Produto"
-                placeholder="Ex: Fonte Chaveada 24V"
-                value={novoProduto}
-                onChange={(e) => setNovoProduto(e.target.value)}
-                required
-              />
+              {/* Produto — select com produto_id correto */}
+              <div>
+                <label className="text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5 block">
+                  Produto <span className="text-rose-400">*</span>
+                </label>
+                {produtos.length > 0 ? (
+                  <select
+                    value={novoProdutoId}
+                    onChange={(e) => setNovoProdutoId(e.target.value)}
+                    required
+                    className="w-full bg-[#10172a] border border-[#1e294b] text-slate-200 text-sm rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">Selecione um produto...</option>
+                    {produtos.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.codigo ? `[${p.codigo}] ` : ''}{p.nome}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <Input
+                    placeholder="ID do produto (API offline)"
+                    type="number"
+                    value={novoProdutoId}
+                    onChange={(e) => setNovoProdutoId(e.target.value)}
+                    required
+                  />
+                )}
+              </div>
 
+              {/* Quantidade */}
               <Input
                 label="Quantidade"
                 type="number"
@@ -226,11 +308,12 @@ export function MovimentacoesPage() {
                 required
               />
 
+              {/* Observação (campo opcional) */}
               <Input
-                label="Motivo / Observação"
-                placeholder="Ex: Compra ou Ordem de Serviço"
-                value={novoMotivo}
-                onChange={(e) => setNovoMotivo(e.target.value)}
+                label="Observação (opcional)"
+                placeholder="Ex: NF #8921, Ordem de Serviço..."
+                value={novaObservacao}
+                onChange={(e) => setNovaObservacao(e.target.value)}
               />
 
               <div className="flex gap-2 pt-2">
@@ -242,8 +325,8 @@ export function MovimentacoesPage() {
                 >
                   Cancelar
                 </Button>
-                <Button type="submit" variant="primary" fullWidth>
-                  Confirmar
+                <Button type="submit" variant="primary" fullWidth disabled={isSubmitting}>
+                  {isSubmitting ? 'Registrando...' : 'Confirmar'}
                 </Button>
               </div>
             </form>

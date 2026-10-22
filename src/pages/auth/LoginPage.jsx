@@ -83,7 +83,7 @@ function LoginPage() {
             marginBottom: '24px',
           }}
         >
-           <h1
+          <h1
             style={{
               fontSize: '22px',
               fontWeight: '700',
@@ -257,7 +257,7 @@ function LoginPage() {
             )}
           </div>
 
-    
+
           <div
             style={{
               textAlign: 'right',

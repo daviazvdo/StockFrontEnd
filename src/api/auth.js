@@ -6,7 +6,7 @@ import apiClient from './client';
 export const authService = {
   /**
    * Realiza login na API
-   * POST /api/v1/auth/login (email, senha) -> retorna JWT
+   * POST /api/v1/auth/login
    */
   async login(email, senha) {
     const response = await apiClient.post('/api/v1/auth/login', {
@@ -18,7 +18,7 @@ export const authService = {
 
   /**
    * Registra novo usuário
-   * POST /api/v1/auth/register (nome, email, senha)
+   * POST /api/v1/auth/register
    */
   async register(nome, email, senha) {
     const response = await apiClient.post('/api/v1/auth/register', {
@@ -38,33 +38,27 @@ export const authService = {
     return response.data;
   },
 
-  /** Protótipo para solicitar redefinição de senha, lógica exige o código enviado ao email */
+  /**
+   * Solicita envio de e-mail com token de redefinição de senha
+   * POST /api/v1/auth/esqueci-senha
+   * CORREÇÃO: rota correta é /esqueci-senha (não /forgot-password)
+   */
   async forgotPassword(email) {
-    const response = await apiClient.post('/api/v1/auth/forgot-password', {
+    const response = await apiClient.post('/api/v1/auth/esqueci-senha', {
       email: email.trim(),
     });
     return response.data;
   },
 
   /**
-   protótipo para verficar o código enviado ao email do usuário para redefinição de senha
+   * Confirma a redefinição de senha com o token recebido por e-mail
+   * POST /api/v1/auth/resetar-senha
+   * CORREÇÃO: rota correta é /resetar-senha; payload exige { token, novaSenha }
+   * A API NÃO possui endpoint de verificação de código separado (fluxo é 2 etapas).
    */
-  async verifyResetCode(email, codigo) {
-    const response = await apiClient.post('/api/v1/auth/verify-reset-code', {
-      email: email.trim(),
-      codigo: codigo.trim(),
-    });
-    return response.data;
-  },
-
-  /**
-    protótipo para redefinir a senha do usuário, lógica exige o código e o email do usuário, 
-    e depois altera a senha para a nova senha informada
-   */
-  async resetPassword(email, codigo, novaSenha) {
-    const response = await apiClient.post('/api/v1/auth/reset-password', {
-      email: email.trim(),
-      codigo: codigo.trim(),
+  async resetPassword(token, novaSenha) {
+    const response = await apiClient.post('/api/v1/auth/resetar-senha', {
+      token: token.trim(),
       novaSenha,
     });
     return response.data;
@@ -72,4 +66,3 @@ export const authService = {
 };
 
 export default authService;
-
